@@ -482,6 +482,14 @@ def main():
     _heartbeat_timer.timeout.connect(_send_heartbeat)
     _heartbeat_timer.start()
 
+    # Retry pending uploads كل دقيقتين
+    _retry_timer = QTimer()
+    _retry_timer.setInterval(120000)
+    _retry_timer.timeout.connect(lambda: __import__("cloud_sync").retry_pending_uploads())
+    _retry_timer.start()
+    # محاولة أولى بعد 10 ثواني
+    QTimer.singleShot(10000, lambda: __import__("cloud_sync").retry_pending_uploads())
+
     app = QApplication(sys.argv)
     app.setLayoutDirection(Qt.RightToLeft)
     app.setStyle("Fusion")

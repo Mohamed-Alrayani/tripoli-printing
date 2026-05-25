@@ -1,5 +1,6 @@
 import os
 import random
+import logging
 import requests
 from datetime import datetime
 from PyQt5.QtWidgets import (
@@ -439,6 +440,8 @@ class ArchiveWidget(QWidget):
                     admin_id, "success",
                     f"✅ تم إرسال الفاتورة وكود التحقق {secure_code} للمسؤول"
                 )
+                # رفع للسحابة عشان تستقبلها حتى لو الابتوب مقفل
+                self._upload_to_cloud(pdf_path, secure_code, client.get("name", ""), inv["total_after_discount"], inv["invoice_number"])
                 QMessageBox.information(
                     self, "تم",
                     f"✅ تم إرسال الفاتورة وكود التحقق للمسؤول.\n"
@@ -450,6 +453,38 @@ class ArchiveWidget(QWidget):
                 QMessageBox.warning(self, "خطأ", f"❌ فشل الإرسال:\n{err}")
         except Exception as e:
             QMessageBox.warning(self, "خطأ", f"❌ فشل الإرسال:\n{str(e)}")
+
+    def _upload_to_cloud(self, pdf_path, secure_code, client_name, total, invoice_number=""):
+        settings = db.get_company_settings()
+        cloud_url = (settings.get("cloud_server_url") or "").rstrip("/")
+        cloud_api_key = settings.get("cloud_api_key") or ""
+        if not cloud_url or not cloud_api_key or not pdf_path or not os.path.exists(pdf_path):
+            return
+        try:
+            with open(pdf_path, "rb") as f:
+                files = {"pdf": (os.path.basename(pdf_path), f, "application/pdf")}
+                data = {
+                    "secure_code": secure_code,
+                    "invoice_number": invoice_number,
+                    "client_name": client_name,
+                    "total": str(total),
+                }
+                resp = requests.post(
+                    f"{cloud_url}/add-invoice",
+                    files=files, data=data,
+                    headers={"X-API-KEY": cloud_api_key},
+                    timeout=30
+                )
+                if resp.status_code == 200:
+                    logging.info(f"Invoice {invoice_number} uploaded to cloud from archive")
+                    return True
+                else:
+                    logging.warning(f"Cloud upload failed from archive: {resp.status_code}")
+        except Exception as e:
+            logging.warning(f"Cloud upload error from archive: {e}")
+        from cloud_sync import add_pending
+        add_pending(pdf_path, secure_code, client_name, total, invoice_number)
+        return False
 
     def _generate_report(self):
         inv_num = self.search_number.text().strip()

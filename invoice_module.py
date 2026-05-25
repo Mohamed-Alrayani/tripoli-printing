@@ -799,11 +799,14 @@ class InvoiceWidget(QWidget):
         if send_telegram and secure_code:
             settings = db.get_company_settings()
             admin_id = settings.get("telegram_admin_id", "").strip()
-            if admin_id:
+            token = settings.get("telegram_bot_token", "").strip()
+            if admin_id and token:
                 client_info = db.get_client_by_id(client_id)
                 cname = client_info["name"] if client_info else ""
-                self._notify_admin_code(admin_id, secure_code, cname)
-                # رفع الفاتورة للسحابة (عشان تستقبلها حتى لو الابتوب مقفل)
+                if pdf_path and os.path.exists(pdf_path):
+                    self._send_pdf_to_admin(pdf_path, secure_code, admin_id, token, cname)
+                else:
+                    self._notify_admin_code(admin_id, secure_code, cname)
                 self._upload_to_cloud(pdf_path, secure_code, cname, final_total)
             else:
                 QMessageBox.warning(
@@ -834,6 +837,30 @@ class InvoiceWidget(QWidget):
             QMessageBox.information(self, "تم الحفظ والإرسال", msg)
         self._clear_all()
         return True
+
+    def _send_pdf_to_admin(self, pdf_path, secure_code, admin_id, token, client_name=""):
+        """يرسل PDF الفاتورة + كود التحقق للمسؤول عبر تلجرام."""
+        try:
+            import requests
+            url_doc = f"https://api.telegram.org/bot{token}/sendDocument"
+            caption = (
+                f"📄 فاتورة رقم: {self.current_invoice_number}\n"
+                f"العميل: {client_name}\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"🔐 كود التحقق: {secure_code}\n"
+                f"⚠️ أرسل العميل هذا الكود للبوت لاستلام الفاتورة."
+            )
+            with open(pdf_path, "rb") as f:
+                files = {"document": (os.path.basename(pdf_path), f, "application/pdf")}
+                data = {"chat_id": admin_id, "caption": caption}
+                resp = requests.post(url_doc, files=files, data=data, timeout=60)
+            if resp.status_code == 200 and resp.json().get("ok"):
+                logging.info(f"PDF + code sent to admin for invoice {self.current_invoice_number}")
+            else:
+                err = resp.json().get("description", str(resp.status_code))
+                QMessageBox.warning(self, "خطأ", f"❌ فشل إرسال PDF للمسؤول:\n{err}")
+        except Exception as e:
+            QMessageBox.warning(self, "خطأ", f"❌ فشل إرسال PDF للمسؤول:\n{str(e)}")
 
     def _notify_admin_code(self, admin_id, secure_code, client_name=""):
         settings = db.get_company_settings()
@@ -887,10 +914,15 @@ class InvoiceWidget(QWidget):
                 )
                 if resp.status_code == 200:
                     logging.info(f"Invoice {self.current_invoice_number} uploaded to cloud")
+                    return True
                 else:
-                    logging.warning(f"Cloud upload failed: {resp.status_code} {resp.text}")
+                    logging.warning(f"Cloud upload failed: {resp.status_code}")
         except Exception as e:
             logging.warning(f"Cloud upload error: {e}")
+        # فشل → نحطها في قائمة الانتظار عشان نعيد المحاولة لاحقاً
+        from cloud_sync import add_pending
+        add_pending(pdf_path, secure_code, client_name, total, self.current_invoice_number)
+        return False
 
     def _send_via_telegram(self, pdf_path, invoice_id, client_id, client_name, telegram_id, total=0, secure_code=""):
         settings = db.get_company_settings()
