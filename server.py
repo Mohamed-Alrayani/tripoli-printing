@@ -1,19 +1,18 @@
 import os
 import io
-import json
 import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 import telebot
-import requests
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 API_KEY = os.environ.get("X_API_KEY", "")
-RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "")
+RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://tripoli-printing.onrender.com")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
 invoices = {}
+
 
 @app.route("/", methods=["GET"])
 def health():
@@ -98,25 +97,25 @@ def handle_code(message):
         )
 
 
-@app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    if request.json:
-        update = telebot.types.Update.de_json(json.dumps(request.json))
+    if request.headers.get("content-type") == "application/json":
+        json_string = request.get_data().decode("utf-8")
+        update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
-    return "OK", 200
+        return ""
+    else:
+        abort(403)
 
 
 def set_webhook():
-    if not BOT_TOKEN or not RENDER_URL:
-        logging.warning("BOT_TOKEN or RENDER_EXTERNAL_URL not set, skipping webhook")
+    if not BOT_TOKEN:
+        logging.error("BOT_TOKEN is not set")
         return
-    webhook_url = f"{RENDER_URL}/webhook/{BOT_TOKEN}"
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-    resp = requests.post(url, json={"url": webhook_url})
-    if resp.status_code == 200 and resp.json().get("ok"):
-        logging.info(f"Webhook set to {webhook_url}")
-    else:
-        logging.error(f"Webhook failed: {resp.text}")
+    webhook_url = f"{RENDER_URL}/webhook"
+    bot.remove_webhook()
+    bot.set_webhook(url=webhook_url)
+    logging.info(f"Webhook set to {webhook_url}")
 
 
 if __name__ == "__main__":
