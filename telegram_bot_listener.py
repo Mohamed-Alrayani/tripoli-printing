@@ -68,6 +68,7 @@ class TelegramBotListener(threading.Thread):
     def _process_code(self, code, chat_id, token, settings=None):
         inv = db.find_invoice_by_secure_code(code)
         if not inv:
+            print(f"[BOT-LAPTOP] Code {code} not found in local DB")
             msg_url = SEND_MSG_API.format(token=token)
             requests.post(
                 msg_url,

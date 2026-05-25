@@ -142,6 +142,7 @@ def process_update(update):
         inv = invoices.pop(code, None)
 
         if not inv:
+            logging.warning(f"Code {code} not found in cloud. Available codes: {list(invoices.keys())[:10]}")
             send_message(
                 chat_id,
                 "عذراً، هذا الكود غير صحيح أو انتهت صلاحيته.\n"
@@ -239,6 +240,27 @@ def delete_code():
         logging.info(f"Code {code} deleted from cloud by desktop notification")
         return jsonify({"ok": True, "note": "deleted"}), 200
     return jsonify({"ok": True, "note": "not_found"}), 200
+
+
+@app.route("/check-code", methods=["GET"])
+def check_code():
+    """يتحقق من وجود كود في السحابة (للتشخيص)."""
+    api_key = request.headers.get("X-API-KEY", "")
+    if api_key != API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"error": "code required"}), 400
+    found = code in invoices
+    info = None
+    if found:
+        inv = invoices[code]
+        info = {
+            "invoice_number": inv.get("invoice_number"),
+            "client_name": inv.get("client_name"),
+            "total": inv.get("total"),
+        }
+    return jsonify({"ok": True, "found": found, "code": code, "info": info}), 200
 
 
 @app.route("/delete-invoice", methods=["POST"])

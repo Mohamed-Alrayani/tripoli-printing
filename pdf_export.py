@@ -287,7 +287,7 @@ def generate_invoice_pdf(invoice_data, items, client_data, output_path, secure_c
 
     pdf.ln(3)
 
-    col_widths = [31, 14, 22, 22, 26, 46, 9]
+    col_widths = [39, 16, 24, 24, 28, 50, 10]
     headers = [
         ar("الإجمالي"), ar("الكمية"), ar("سعر المتر"),
         ar("المساحة"), ar("المقاس"), ar("نوع الخدمة"), ar("#"),
@@ -296,7 +296,7 @@ def generate_invoice_pdf(invoice_data, items, client_data, output_path, secure_c
     pdf.set_fill_color(*TABLE_HEADER_COLOR)
     pdf.set_text_color(*WHITE)
     pdf.set_font(pdf.font_name, "B", 9)
-    pdf.set_x(20)
+    pdf.set_x(10)
     for hdr, w in zip(headers, col_widths):
         pdf.cell(w, 10, hdr, border=1, align="C", fill=True)
     pdf.ln()
@@ -306,7 +306,7 @@ def generate_invoice_pdf(invoice_data, items, client_data, output_path, secure_c
 
     for idx, item in enumerate(items):
         size_str = f"{item['length']} × {item['width']}"
-        pdf.set_x(20)
+        pdf.set_x(10)
         row_data = [
             f"{item['total']:.2f}",
             str(item["quantity"]),
@@ -419,7 +419,7 @@ def generate_summary_report(invoices, output_path):
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
 
-    col_widths = [30, 24, 60, 38, 8]
+    col_widths = [46, 38, 70, 28, 8]
     headers = [
         ar("المدفوع"), ar("الإجمالي"), ar("اسم العميل"),
         ar("رقم الفاتورة"), ar("#"),
@@ -428,7 +428,7 @@ def generate_summary_report(invoices, output_path):
     pdf.set_fill_color(*TABLE_HEADER_COLOR)
     pdf.set_text_color(*WHITE)
     pdf.set_font(pdf.font_name, "B", 9)
-    pdf.set_x(25)
+    pdf.set_x(10)
     for hdr, w in zip(headers, col_widths):
         pdf.cell(w, 10, hdr, border=1, align="C", fill=True)
     pdf.ln()
@@ -439,7 +439,7 @@ def generate_summary_report(invoices, output_path):
     grand_paid = 0.0
 
     for idx, inv in enumerate(invoices):
-        pdf.set_x(25)
+        pdf.set_x(10)
         row_data = [
             f"{inv['paid_amount']:.2f}",
             f"{inv['total_after_discount']:.2f}",
