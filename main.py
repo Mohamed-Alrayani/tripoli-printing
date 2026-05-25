@@ -460,6 +460,13 @@ def main():
     bot_listener = TelegramBotListener()
     bot_listener.start()
 
+    app = QApplication(sys.argv)
+    app.setLayoutDirection(Qt.RightToLeft)
+    app.setStyle("Fusion")
+
+    font = QFont("Segoe UI", 10)
+    app.setFont(font)
+
     # Heartbeat للسيرفر السحابي: يرسل نبض كل 30 ثانية عشان السحاب يعرف ان الابتوب شغال
     _heartbeat_timer = QTimer()
     _heartbeat_timer.setInterval(30000)
@@ -495,13 +502,6 @@ def main():
     _sync_timer.timeout.connect(lambda: __import__("sync_manager").process_queue())
     _sync_timer.start()
     QTimer.singleShot(2000, lambda: __import__("sync_manager").process_queue())
-
-    app = QApplication(sys.argv)
-    app.setLayoutDirection(Qt.RightToLeft)
-    app.setStyle("Fusion")
-
-    font = QFont("Segoe UI", 10)
-    app.setFont(font)
 
     while True:
         login = LoginDialog()

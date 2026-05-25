@@ -230,7 +230,14 @@ def generate_invoice_pdf(invoice_data, items, client_data, output_path, secure_c
         bot_username = bot_username.lstrip("@")
 
     if secure_code and bot_username:
-        qr_data = f"https://t.me/{bot_username}?start={secure_code}"
+        # نص معروف + رابط تليجرام (لما يمسحه يفتح البوت مباشرة)
+        qr_data = (
+            f"رقم الفاتورة: {invoice_data['number']}\n"
+            f"التاريخ: {invoice_data['date']}\n"
+            f"العميل: {client_data.get('name', '')}\n"
+            f"الإجمالي: {invoice_data['total_after_discount']:.2f} {currency}\n\n"
+            f"https://t.me/{bot_username}?start={secure_code}"
+        )
     else:
         qr_data = (
             f"رقم الفاتورة: {invoice_data['number']}\n"
