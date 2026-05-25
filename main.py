@@ -510,6 +510,9 @@ def main():
     font = QFont("Segoe UI", 10)
     app.setFont(font)
 
+    # إعادة رفع كل الأكواد الموجودة محلياً للسحابة عند بدء التشغيل
+    QTimer.singleShot(3000, lambda: __import__("sync_manager").re_enqueue_all())
+
     # Heartbeat للسيرفر السحابي: يرسل نبض كل 30 ثانية عشان السحاب يعرف ان الابتوب شغال
     _heartbeat_timer = QTimer()
     _heartbeat_timer.setInterval(30000)

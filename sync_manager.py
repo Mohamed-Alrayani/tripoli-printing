@@ -147,3 +147,38 @@ def process_queue():
 def pending_count():
     """عدد العمليات المعلقة في قائمة الانتظار."""
     return len(_load())
+
+
+def re_enqueue_all():
+    """يعيد رفع كل الأكواد المخزنة في قاعدة البيانات المحلية (عند بدء التشغيل)."""
+    from database import get_company_settings, get_connection
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("""
+        SELECT i.invoice_number, i.telegram_secure_code, i.total_after_discount,
+               c.name as client_name
+        FROM invoices i
+        JOIN clients c ON i.client_id = c.id
+        WHERE i.telegram_secure_code IS NOT NULL AND i.telegram_secure_code != ''
+    """)
+    rows = c.fetchall()
+    conn.close()
+    count = 0
+    for row in rows:
+        inv_num = row["invoice_number"]
+        code = row["telegram_secure_code"]
+        total = row["total_after_discount"]
+        cname = row["client_name"]
+        # نحاول نوجد الـ PDF
+        pdf_dir = "/home/mohamed/سطح المكتب/فواتير منظومة"
+        pdf_path = None
+        if os.path.exists(pdf_dir):
+            for f in os.listdir(pdf_dir):
+                if inv_num in f and f.endswith(".pdf"):
+                    pdf_path = os.path.join(pdf_dir, f)
+                    break
+        if pdf_path and code:
+            enqueue("save", pdf_path, code, inv_num, cname, total)
+            count += 1
+    if count:
+        print(f"🔄 Re-enqueued {count} invoices for cloud sync")
