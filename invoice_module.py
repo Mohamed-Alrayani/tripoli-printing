@@ -787,7 +787,7 @@ class InvoiceWidget(QWidget):
                     "remaining_amount": remaining,
                     "status": status,
                 }
-                generate_invoice_pdf(invoice_data, self.items_list, client, pdf_path)
+                generate_invoice_pdf(invoice_data, self.items_list, client, pdf_path, secure_code=secure_code or "")
             except Exception as e:
                 QMessageBox.warning(
                     self, "خطأ في PDF",

@@ -30,6 +30,9 @@ SEND_DOC = TELEGRAM_API + "/sendDocument"
 DELETE_WEBHOOK = TELEGRAM_API + "/deleteWebhook"
 
 
+INVOICE_TTL_DAYS = 180  # 6 شهور قبل حذف الفواتير غير المستلمة
+
+
 def _load_index():
     if os.path.exists(INDEX_FILE):
         try:
@@ -38,8 +41,6 @@ def _load_index():
                 for code, info in data.items():
                     pdf_path = info.get("pdf_path", "")
                     if os.path.exists(pdf_path):
-                        with open(pdf_path, "rb") as pf:
-                            info["pdf_bytes"] = pf.read()
                         invoices[code] = info
                 logging.info(f"Loaded {len(invoices)} invoices from disk")
         except Exception as e:
@@ -56,11 +57,35 @@ def _save_index():
                 "total": info["total"],
                 "pdf_path": info.get("pdf_path", ""),
                 "pdf_filename": info["pdf_filename"],
+                "created_at": info.get("created_at", 0),
             }
         with open(INDEX_FILE, "w", encoding="utf-8") as f:
             json.dump(index, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logging.error(f"Failed to save index: {e}")
+
+
+def _cleanup_expired():
+    """يحذف الفواتير القديمة غير المستلمة من الذاكرة والقرص."""
+    now = time.time()
+    max_age = INVOICE_TTL_DAYS * 86400
+    to_delete = []
+    for code, info in list(invoices.items()):
+        created = info.get("created_at", 0)
+        if created > 0 and now - created > max_age:
+            to_delete.append(code)
+    for code in to_delete:
+        inv = invoices.pop(code, None)
+        if inv:
+            pdf_path = inv.get("pdf_path", "")
+            if os.path.exists(pdf_path):
+                try:
+                    os.remove(pdf_path)
+                except Exception:
+                    pass
+            logging.info(f"Expired invoice {inv.get('invoice_number', '?')} (code {code}) cleaned up")
+    if to_delete:
+        _save_index()
 
 
 def send_message(chat_id, text):
@@ -70,8 +95,10 @@ def send_message(chat_id, text):
         logging.error(f"send_message failed: {e}")
 
 
-def send_document(chat_id, pdf_bytes, filename, caption):
+def send_document(chat_id, pdf_path, filename, caption):
     try:
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
         files = {"document": (filename, io.BytesIO(pdf_bytes), "application/pdf")}
         data = {"chat_id": chat_id, "caption": caption}
         requests.post(SEND_DOC, files=files, data=data, timeout=60)
@@ -102,6 +129,14 @@ def process_update(update):
         )
         return
 
+    # معالجة /start 123 (من مسح الباركود)
+    if text.startswith("/start ") and len(text) > 7:
+        code = text[7:].strip()
+        if code.isdigit() and len(code) == 3:
+            text = code
+        else:
+            return
+
     if text.isdigit() and len(text) == 3:
         code = text
         inv = invoices.pop(code, None)
@@ -128,7 +163,7 @@ def process_update(update):
             f"تم التحقق من الكود بنجاح ✅\n"
             f"شكراً لتعاملك معنا 🙏"
         )
-        send_document(chat_id, inv["pdf_bytes"], inv["pdf_filename"], caption)
+        send_document(chat_id, pdf_path, inv["pdf_filename"], caption)
         logging.info(f"Invoice {inv['invoice_number']} sent via cloud, code {code} deleted")
 
 
@@ -240,9 +275,9 @@ def add_invoice():
         "invoice_number": invoice_number,
         "client_name": client_name,
         "total": total,
-        "pdf_bytes": pdf_bytes,
         "pdf_filename": pdf_filename,
         "pdf_path": pdf_path,
+        "created_at": time.time(),
     }
 
     _save_index()
@@ -250,9 +285,16 @@ def add_invoice():
     return jsonify({"success": True, "message": "تم تخزين الفاتورة في السحابة"}), 200
 
 
-# -------------------- تشغيل البولينج في خلفية --------------------
+# -------------------- تشغيل البولينج والتنظيف في خلفية --------------------
+def cleanup_loop():
+    while True:
+        time.sleep(3600)  # كل ساعة
+        _cleanup_expired()
+
+
 _load_index()
 threading.Thread(target=poll_bot, daemon=True).start()
+threading.Thread(target=cleanup_loop, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

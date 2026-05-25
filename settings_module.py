@@ -167,6 +167,11 @@ class SettingsWidget(QWidget):
         self.telegram_admin_id.setStyleSheet(STYLES["input_style"])
         form.addRow("Telegram ID المسؤول:", self.telegram_admin_id)
 
+        self.telegram_bot_username = QLineEdit()
+        self.telegram_bot_username.setPlaceholderText("Billlllllls_bot")
+        self.telegram_bot_username.setStyleSheet(STYLES["input_style"])
+        form.addRow("يوزر البوت (بدون @):", self.telegram_bot_username)
+
         self.cloud_server_url = QLineEdit()
         self.cloud_server_url.setPlaceholderText("https://tripoli-printing.onrender.com")
         self.cloud_server_url.setStyleSheet(STYLES["input_style"])
@@ -306,6 +311,7 @@ class SettingsWidget(QWidget):
         self.invoice_notes.setPlainText(s.get("invoice_notes", ""))
         self.telegram_token.setText(s.get("telegram_bot_token", ""))
         self.telegram_admin_id.setText(s.get("telegram_admin_id", ""))
+        self.telegram_bot_username.setText(s.get("telegram_bot_username", ""))
         self.cloud_server_url.setText(s.get("cloud_server_url", ""))
         self.cloud_api_key.setText(s.get("cloud_api_key", ""))
 
@@ -325,7 +331,8 @@ class SettingsWidget(QWidget):
             self.telegram_token.text().strip(),
             self.telegram_admin_id.text().strip(),
             self.cloud_server_url.text().strip(),
-            self.cloud_api_key.text().strip()
+            self.cloud_api_key.text().strip(),
+            self.telegram_bot_username.text().strip()
         )
         QMessageBox.information(self, "تم", "تم حفظ إعدادات الشركة بنجاح")
 

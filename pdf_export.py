@@ -218,19 +218,27 @@ def number_to_words(num):
     return " و ".join(parts) if parts else "صفر"
 
 
-def generate_invoice_pdf(invoice_data, items, client_data, output_path):
+def generate_invoice_pdf(invoice_data, items, client_data, output_path, secure_code="", bot_username=""):
     settings = db.get_company_settings()
     pdf = InvoicePDF(settings)
     currency = settings.get("currency", "د.ل")
     pdf.add_page()
 
-    qr_text = (
-        f"رقم الفاتورة: {invoice_data['number']}\n"
-        f"الإجمالي: {invoice_data['total_after_discount']:.2f} {currency}\n"
-        f"التاريخ: {invoice_data['date']}\n"
-        f"العميل: {client_data.get('name', '')}"
-    )
-    qr_path = generate_qr(qr_text)
+    if not bot_username:
+        bot_username = settings.get("telegram_bot_username", "")
+    if bot_username:
+        bot_username = bot_username.lstrip("@")
+
+    if secure_code and bot_username:
+        qr_data = f"https://t.me/{bot_username}?start={secure_code}"
+    else:
+        qr_data = (
+            f"رقم الفاتورة: {invoice_data['number']}\n"
+            f"الإجمالي: {invoice_data['total_after_discount']:.2f} {currency}\n"
+            f"التاريخ: {invoice_data['date']}\n"
+            f"العميل: {client_data.get('name', '')}"
+        )
+    qr_path = generate_qr(qr_data)
 
     pdf.set_font(pdf.font_name, "B", 15)
     pdf.set_text_color(*RED)

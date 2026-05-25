@@ -55,6 +55,12 @@ class TelegramBotListener(threading.Thread):
         if not text:
             return
 
+        # معالجة /start 123 (من مسح الباركود)
+        if text.startswith("/start ") and len(text) > 7:
+            code = text[7:].strip()
+            if code.isdigit() and len(code) == 3:
+                text = code
+
         if text.isdigit() and len(text) == 3:
             self._process_code(text, chat_id, token, settings)
             return
@@ -94,7 +100,7 @@ class TelegramBotListener(threading.Thread):
                 "remaining_amount": inv["remaining_amount"],
                 "status": inv["status"],
             }
-            generate_invoice_pdf(invoice_data, items, client, pdf_path)
+            generate_invoice_pdf(invoice_data, items, client, pdf_path, secure_code=code)
         except Exception:
             msg_url = SEND_MSG_API.format(token=token)
             requests.post(

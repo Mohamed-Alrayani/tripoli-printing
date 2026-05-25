@@ -118,6 +118,7 @@ def init_db():
             invoice_notes TEXT DEFAULT 'البضاعة التي تفصل لا ترد ولا تستبدل. نشكركم على حسن تعاملكم معكم.',
             telegram_bot_token TEXT DEFAULT '8658197731:AAEhum8PY1W0-6whvMH6mtH0gbXzNuXpTdI',
             telegram_admin_id TEXT DEFAULT '',
+            telegram_bot_username TEXT DEFAULT 'Billlllllls_bot',
             cloud_server_url TEXT DEFAULT 'https://tripoli-printing.onrender.com',
             cloud_api_key TEXT DEFAULT ''
         );
@@ -132,6 +133,8 @@ def init_db():
         c.execute("ALTER TABLE company_settings ADD COLUMN cloud_server_url TEXT DEFAULT 'https://tripoli-printing.onrender.com'")
     if "cloud_api_key" not in settings_cols:
         c.execute("ALTER TABLE company_settings ADD COLUMN cloud_api_key TEXT DEFAULT ''")
+    if "telegram_bot_username" not in settings_cols:
+        c.execute("ALTER TABLE company_settings ADD COLUMN telegram_bot_username TEXT DEFAULT 'Billlllllls_bot'")
 
     c.execute("SELECT COUNT(*) as cnt FROM company_settings")
     if c.fetchone()["cnt"] == 0:
@@ -511,21 +514,22 @@ def get_company_settings():
         "invoice_notes": "البضاعة التي تفصل لا ترد ولا تستبدل.",
         "telegram_bot_token": "",
         "telegram_admin_id": "",
+        "telegram_bot_username": "Billlllllls_bot",
         "cloud_server_url": "https://tripoli-printing.onrender.com",
         "cloud_api_key": ""
     }
 
 
-def save_company_settings(company_name, phone1, phone2, address, currency, invoice_notes, telegram_bot_token="", telegram_admin_id="", cloud_server_url="", cloud_api_key=""):
+def save_company_settings(company_name, phone1, phone2, address, currency, invoice_notes, telegram_bot_token="", telegram_admin_id="", cloud_server_url="", cloud_api_key="", telegram_bot_username=""):
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
         UPDATE company_settings SET
             company_name=?, phone1=?, phone2=?, address=?,
             currency=?, invoice_notes=?, telegram_bot_token=?, telegram_admin_id=?,
-            cloud_server_url=?, cloud_api_key=?
+            cloud_server_url=?, cloud_api_key=?, telegram_bot_username=?
         WHERE id=1
-    """, (company_name, phone1, phone2, address, currency, invoice_notes, telegram_bot_token, telegram_admin_id, cloud_server_url, cloud_api_key))
+    """, (company_name, phone1, phone2, address, currency, invoice_notes, telegram_bot_token, telegram_admin_id, cloud_server_url, cloud_api_key, telegram_bot_username))
     conn.commit()
     conn.close()
 

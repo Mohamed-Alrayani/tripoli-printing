@@ -351,7 +351,7 @@ class ArchiveWidget(QWidget):
                 "remaining_amount": inv["remaining_amount"],
                 "status": inv["status"],
             }
-            generate_invoice_pdf(invoice_data, items, client, pdf_path)
+            generate_invoice_pdf(invoice_data, items, client, pdf_path, secure_code=inv.get("telegram_secure_code", "") or "")
             QMessageBox.information(self, "تم", f"✅ تم إعادة طباعة الفاتورة:\n{pdf_path}")
         except Exception as e:
             QMessageBox.critical(self, "خطأ", f"❌ {str(e)}")
@@ -412,7 +412,7 @@ class ArchiveWidget(QWidget):
                 "remaining_amount": inv["remaining_amount"],
                 "status": inv["status"],
             }
-            generate_invoice_pdf(invoice_data, items, client, pdf_path)
+            generate_invoice_pdf(invoice_data, items, client, pdf_path, secure_code=secure_code)
         except Exception as e:
             QMessageBox.critical(self, "خطأ", f"❌ فشل إنشاء PDF:\n{str(e)}")
             return
