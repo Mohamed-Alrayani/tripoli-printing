@@ -8,6 +8,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 API_KEY = os.environ.get("X_API_KEY", "")
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://tripoli-printing.onrender.com")
 
+logging.basicConfig(level=logging.INFO)
+
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
@@ -112,14 +114,18 @@ def set_webhook():
     if not BOT_TOKEN:
         logging.error("BOT_TOKEN is not set")
         return
-    webhook_url = f"{RENDER_URL}/webhook"
-    bot.remove_webhook()
-    bot.set_webhook(url=webhook_url)
-    logging.info(f"Webhook set to {webhook_url}")
+    try:
+        webhook_url = f"{RENDER_URL}/webhook"
+        bot.remove_webhook()
+        bot.set_webhook(url=webhook_url)
+        logging.info(f"Webhook set to {webhook_url}")
+    except Exception as e:
+        logging.error(f"Webhook setup failed: {e}")
 
+
+# تضبيط الـ webhook فوراً عند تشغيل السيرفر (حتى مع gunicorn)
+set_webhook()
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    set_webhook()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
