@@ -364,7 +364,12 @@ class ArchiveWidget(QWidget):
         )
         if reply == QMessageBox.Yes:
             try:
+                inv = db.get_invoice_by_id(invoice_id)
+                inv_num = inv["invoice_number"] if inv else ""
                 db.delete_invoice(invoice_id)
+                if inv_num:
+                    from sync_manager import enqueue_delete
+                    enqueue_delete(inv_num)
                 self._search()
                 QMessageBox.information(self, "تم", "✅ تم حذف الفاتورة بنجاح")
             except Exception as e:

@@ -241,6 +241,33 @@ def delete_code():
     return jsonify({"ok": True, "note": "not_found"}), 200
 
 
+@app.route("/delete-invoice", methods=["POST"])
+def delete_invoice():
+    """يحذف فاتورة من السحابة (استجابة لمزامنة الحذف من الابتوب)."""
+    api_key = request.headers.get("X-API-KEY", "")
+    if api_key != API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    invoice_number = data.get("invoice_number", "").strip()
+    if not invoice_number:
+        return jsonify({"error": "invoice_number required"}), 400
+    deleted = []
+    for code, inv in list(invoices.items()):
+        if inv.get("invoice_number") == invoice_number:
+            pdf_path = inv.get("pdf_path", "")
+            if os.path.exists(pdf_path):
+                try:
+                    os.remove(pdf_path)
+                except Exception:
+                    pass
+            deleted.append(code)
+            invoices.pop(code)
+    if deleted:
+        _save_index()
+        logging.info(f"Invoice {invoice_number} deleted from cloud ({len(deleted)} codes)")
+    return jsonify({"ok": True, "deleted_codes": len(deleted)}), 200
+
+
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "invoices_count": len(invoices)}), 200

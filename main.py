@@ -487,8 +487,14 @@ def main():
     _retry_timer.setInterval(120000)
     _retry_timer.timeout.connect(lambda: __import__("cloud_sync").retry_pending_uploads())
     _retry_timer.start()
-    # محاولة أولى بعد 10 ثواني
     QTimer.singleShot(10000, lambda: __import__("cloud_sync").retry_pending_uploads())
+
+    # مزامنة فورية مع السحابة: تجربة كل 5 ثواني
+    _sync_timer = QTimer()
+    _sync_timer.setInterval(5000)
+    _sync_timer.timeout.connect(lambda: __import__("sync_manager").process_queue())
+    _sync_timer.start()
+    QTimer.singleShot(2000, lambda: __import__("sync_manager").process_queue())
 
     app = QApplication(sys.argv)
     app.setLayoutDirection(Qt.RightToLeft)

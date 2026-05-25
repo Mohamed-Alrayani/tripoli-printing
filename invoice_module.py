@@ -807,14 +807,25 @@ class InvoiceWidget(QWidget):
                     self._send_pdf_to_admin(pdf_path, secure_code, admin_id, token, cname)
                 else:
                     self._notify_admin_code(admin_id, secure_code, cname)
-                self._upload_to_cloud(pdf_path, secure_code, cname, final_total)
             else:
                 QMessageBox.warning(
                     self, "تنبيه",
                     "⚠️ لم يتم تعيين Telegram ID للمسؤول في الإعدادات.\n"
                     "الرجاء ضبطه من قسم الإعدادات."
                 )
-        elif force_telegram and not pdf_path:
+
+        # مزامنة مع السحابة (كل الفواتير اللي لها PDF + كود)
+        if pdf_path and secure_code:
+            client_info = db.get_client_by_id(client_id)
+            cname = client_info["name"] if client_info else ""
+            action = "edit" if self.editing_invoice_id else "save"
+            from sync_manager import enqueue
+            enqueue(action, pdf_path, secure_code, self.current_invoice_number, cname, final_total)
+        elif self.editing_invoice_id:
+            from sync_manager import enqueue
+            enqueue("edit", pdf_path or "", "", self.current_invoice_number, "", final_total)
+
+        if force_telegram and not pdf_path:
             QMessageBox.warning(self, "خطأ", "❌ لم يتم إنشاء ملف PDF")
 
         if generate_pdf:
