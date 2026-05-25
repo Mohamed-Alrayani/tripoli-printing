@@ -1,9 +1,11 @@
 import os
 import io
 import json
+import time
 import logging
-from flask import Flask, request, jsonify, abort
-import telebot
+import threading
+from flask import Flask, request, jsonify
+import requests
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 API_KEY = os.environ.get("X_API_KEY", "")
@@ -11,7 +13,6 @@ RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://tripoli-printing.onr
 
 logging.basicConfig(level=logging.INFO)
 
-bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
 DATA_DIR = "invoices_data"
@@ -19,6 +20,14 @@ INDEX_FILE = os.path.join(DATA_DIR, "index.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 invoices = {}
+_last_update_id = 0
+_last_heartbeat = 0
+
+TELEGRAM_API = "https://api.telegram.org/bot" + BOT_TOKEN
+GET_UPDATES = TELEGRAM_API + "/getUpdates"
+SEND_MSG = TELEGRAM_API + "/sendMessage"
+SEND_DOC = TELEGRAM_API + "/sendDocument"
+DELETE_WEBHOOK = TELEGRAM_API + "/deleteWebhook"
 
 
 def _load_index():
@@ -52,6 +61,149 @@ def _save_index():
             json.dump(index, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logging.error(f"Failed to save index: {e}")
+
+
+def send_message(chat_id, text):
+    try:
+        requests.post(SEND_MSG, json={"chat_id": chat_id, "text": text}, timeout=10)
+    except Exception as e:
+        logging.error(f"send_message failed: {e}")
+
+
+def send_document(chat_id, pdf_bytes, filename, caption):
+    try:
+        files = {"document": (filename, io.BytesIO(pdf_bytes), "application/pdf")}
+        data = {"chat_id": chat_id, "caption": caption}
+        requests.post(SEND_DOC, files=files, data=data, timeout=60)
+    except Exception as e:
+        logging.error(f"send_document failed: {e}")
+
+
+def process_update(update):
+    global _last_heartbeat
+    # إذا الابتوب شغال (heartbeat < 60 ثانية)، نتخطى المعالجة عشان ما يتعارض
+    if time.time() - _last_heartbeat < 60:
+        return
+
+    msg = update.get("message")
+    if not msg:
+        return
+    chat_id = msg["chat"]["id"]
+    text = (msg.get("text") or "").strip()
+    if not text:
+        return
+
+    if text == "/start":
+        send_message(
+            chat_id,
+            "مرحباً بك في بوت الفواتير 🤖\n\n"
+            "للاستلام فاتورتك، يرجى إرسال رمز التحقق المكون من 3 أرقام\n"
+            "الذي استلمته من الشركة.",
+        )
+        return
+
+    if text.isdigit() and len(text) == 3:
+        code = text
+        inv = invoices.pop(code, None)
+
+        if not inv:
+            send_message(
+                chat_id,
+                "عذراً، هذا الكود غير صحيح أو انتهت صلاحيته.\n"
+                "الرجاء التواصل مع الشركة للحصول على كود جديد.",
+            )
+            return
+
+        pdf_path = inv.get("pdf_path", "")
+        if os.path.exists(pdf_path):
+            try:
+                os.remove(pdf_path)
+            except Exception:
+                pass
+        _save_index()
+
+        caption = (
+            f"📄 فاتورة رقم: {inv['invoice_number']}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"تم التحقق من الكود بنجاح ✅\n"
+            f"شكراً لتعاملك معنا 🙏"
+        )
+        send_document(chat_id, inv["pdf_bytes"], inv["pdf_filename"], caption)
+        logging.info(f"Invoice {inv['invoice_number']} sent via cloud, code {code} deleted")
+
+
+def poll_bot():
+    global _last_update_id
+    # نحاول نمسح أي webhook عشان polling يشتغل
+    # إذا ما انمسحش، webhook route راح يتولى المعالجة
+    try:
+        requests.post(DELETE_WEBHOOK, timeout=10)
+    except Exception:
+        pass
+    time.sleep(1)
+
+    while True:
+        try:
+            params = {"offset": _last_update_id + 1, "timeout": 30}
+            resp = requests.get(GET_UPDATES, params=params, timeout=35)
+            if resp.status_code == 409:
+                # webhook لسه مضبوط → polling ما يشتغلش، نتخطى والـ webhook يتولى
+                time.sleep(10)
+                continue
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("ok"):
+                    for update in data.get("result", []):
+                        _last_update_id = update["update_id"]
+                        process_update(update)
+        except requests.Timeout:
+            continue
+        except Exception as e:
+            logging.error(f"Poll error: {e}")
+            time.sleep(10)
+
+
+# -------------------- Flask Routes --------------------
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    """معالجة التحديثات الواردة من Webhook تليجرام (كاحتياطي إلى جانب polling)."""
+    update = request.get_json(silent=True) or {}
+    if update:
+        process_update(update)
+    return "", 200
+
+
+@app.route("/heartbeat", methods=["POST"])
+def heartbeat():
+    global _last_heartbeat
+    api_key = request.headers.get("X-API-KEY", "")
+    if api_key != API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    _last_heartbeat = time.time()
+    return jsonify({"ok": True}), 200
+
+
+@app.route("/delete-code", methods=["POST"])
+def delete_code():
+    """يحذف كود من السحابة لما الابتوب يعالجه أولاً (اختياري)."""
+    api_key = request.headers.get("X-API-KEY", "")
+    if api_key != API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    code = data.get("code", "").strip()
+    if code and code in invoices:
+        inv = invoices.pop(code)
+        pdf_path = inv.get("pdf_path", "")
+        if os.path.exists(pdf_path):
+            try:
+                os.remove(pdf_path)
+            except Exception:
+                pass
+        _save_index()
+        logging.info(f"Code {code} deleted from cloud by desktop notification")
+        return jsonify({"ok": True, "note": "deleted"}), 200
+    return jsonify({"ok": True, "note": "not_found"}), 200
 
 
 @app.route("/", methods=["GET"])
@@ -94,91 +246,13 @@ def add_invoice():
     }
 
     _save_index()
-    logging.info(f"Invoice {invoice_number} stored with code {secure_code}")
+    logging.info(f"Invoice {invoice_number} stored in cloud")
     return jsonify({"success": True, "message": "تم تخزين الفاتورة في السحابة"}), 200
 
 
-@bot.message_handler(commands=["start"])
-def handle_start(message):
-    bot.reply_to(
-        message,
-        "مرحباً بك في بوت الفواتير 🤖\n\n"
-        "للاستلام فاتورتك، يرجى إرسال رمز التحقق المكون من 3 أرقام\n"
-        "الذي استلمته من الشركة.",
-    )
-
-
-@bot.message_handler(func=lambda m: m.text and m.text.isdigit() and len(m.text) == 3)
-def handle_code(message):
-    code = message.text
-    chat_id = message.chat.id
-    inv = invoices.pop(code, None)
-
-    if not inv:
-        bot.reply_to(
-            message,
-            "عذراً، هذا الكود غير صحيح أو انتهت صلاحيته.\n"
-            "الرجاء التواصل مع الشركة للحصول على كود جديد.",
-        )
-        return
-
-    pdf_path = inv.get("pdf_path", "")
-    if os.path.exists(pdf_path):
-        try:
-            os.remove(pdf_path)
-        except Exception:
-            pass
-
-    _save_index()
-
-    caption = (
-        f"📄 فاتورة رقم: {inv['invoice_number']}\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"تم التحقق من الكود بنجاح ✅\n"
-        f"شكراً لتعاملك معنا 🙏"
-    )
-
-    try:
-        bot.send_document(
-            chat_id,
-            (inv["pdf_filename"], io.BytesIO(inv["pdf_bytes"]), "application/pdf"),
-            caption=caption,
-        )
-        logging.info(f"Invoice {inv['invoice_number']} sent, code {code} deleted")
-    except Exception as e:
-        logging.error(f"Failed to send document: {e}")
-        bot.send_message(
-            chat_id,
-            "عذراً، حدث خطأ أثناء تجهيز الفاتورة. الرجاء المحاولة لاحقاً.",
-        )
-
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    if request.headers.get("content-type") == "application/json":
-        json_string = request.get_data().decode("utf-8")
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ""
-    else:
-        abort(403)
-
-
-def set_webhook():
-    if not BOT_TOKEN:
-        logging.error("BOT_TOKEN is not set")
-        return
-    try:
-        webhook_url = f"{RENDER_URL}/webhook"
-        bot.remove_webhook()
-        bot.set_webhook(url=webhook_url)
-        logging.info(f"Webhook set to {webhook_url}")
-    except Exception as e:
-        logging.error(f"Webhook setup failed: {e}")
-
-
+# -------------------- تشغيل البولينج في خلفية --------------------
 _load_index()
-set_webhook()
+threading.Thread(target=poll_bot, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
