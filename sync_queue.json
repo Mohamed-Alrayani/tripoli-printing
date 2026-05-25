@@ -1,12 +1,1 @@
-[
-  {
-    "action": "save",
-    "pdf_path": "/home/mohamed/سطح المكتب/فواتير منظومة/فاتورة_INV-0004_20260525_133608.pdf",
-    "secure_code": "866",
-    "invoice_number": "INV-0004",
-    "client_name": "ll",
-    "total": "100.0",
-    "retries": 0,
-    "created_at": 1779705369.2172565
-  }
-]
+[]

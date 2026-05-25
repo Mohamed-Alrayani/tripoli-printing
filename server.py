@@ -210,6 +210,22 @@ def webhook():
     return "", 200
 
 
+@app.route("/list-codes", methods=["GET"])
+def list_codes():
+    """يرجع كل الأكواد الموجودة في السحابة (للتشخيص)."""
+    api_key = request.headers.get("X-API-KEY", "")
+    if api_key != API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    codes = {}
+    for code, inv in invoices.items():
+        codes[code] = {
+            "invoice_number": inv.get("invoice_number"),
+            "client_name": inv.get("client_name"),
+            "total": inv.get("total"),
+        }
+    return jsonify({"ok": True, "count": len(codes), "codes": codes}), 200
+
+
 @app.route("/heartbeat", methods=["POST"])
 def heartbeat():
     global _last_heartbeat

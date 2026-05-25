@@ -341,9 +341,14 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(APP_STYLE)
 
         central = QWidget()
-        main_layout = QHBoxLayout(central)
+        main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+
+        inner = QWidget()
+        inner_layout = QHBoxLayout(inner)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+        inner_layout.setSpacing(0)
 
         self.stack = QStackedWidget()
 
@@ -380,14 +385,52 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(settings_scroll)
 
         self.sidebar = Sidebar(current_user, self)
-        main_layout.addWidget(self.sidebar)
-        main_layout.addWidget(self.stack, 1)
+        inner_layout.addWidget(self.sidebar)
+        inner_layout.addWidget(self.stack, 1)
+
+        main_layout.addWidget(inner, 1)
+
+        # شريط حالة المزامنة
+        self.sync_status = QLabel("⏳ جارٍ التحميل...")
+        self.sync_status.setAlignment(Qt.AlignCenter)
+        self.sync_status.setStyleSheet(f"""
+            background-color: {CARD}; color: {TEXT_SEC};
+            font-size: 11px; padding: 4px; border-top: 1px solid {BORDER};
+        """)
+        self.sync_status.setFixedHeight(24)
+        main_layout.addWidget(self.sync_status)
 
         self.setCentralWidget(central)
         self._fit_to_screen()
         self.sidebar.buttons[0].setChecked(True)
         self.stack.currentChanged.connect(self._on_page_changed)
         self.set_page(0)
+
+        # تحديث حالة المزامنة كل 3 ثواني
+        self._sync_timer = QTimer()
+        self._sync_timer.setInterval(3000)
+        self._sync_timer.timeout.connect(self._update_sync_status)
+        self._sync_timer.start()
+        QTimer.singleShot(500, self._update_sync_status)
+
+    def _update_sync_status(self):
+        try:
+            from sync_manager import pending_count
+            count = pending_count()
+            if count == 0:
+                self.sync_status.setText("✅ السحابة: متزامن")
+                self.sync_status.setStyleSheet(f"""
+                    background-color: #dcfce7; color: #166534;
+                    font-size: 11px; padding: 4px; border-top: 1px solid #bbf7d0;
+                """)
+            else:
+                self.sync_status.setText(f"⏳ السحابة: {count} فاتورة في الانتظار...")
+                self.sync_status.setStyleSheet(f"""
+                    background-color: #fef9c3; color: #854d0e;
+                    font-size: 11px; padding: 4px; border-top: 1px solid #fde68a;
+                """)
+        except Exception:
+            pass
 
     def set_page(self, index):
         self.stack.setCurrentIndex(index)
@@ -472,7 +515,8 @@ def main():
     _heartbeat_timer.setInterval(30000)
 
     def _send_heartbeat():
-        s = db.get_company_settings()
+        from database import get_company_settings
+        s = get_company_settings()
         cloud_url = (s.get("cloud_server_url") or "").rstrip("/")
         cloud_api_key = s.get("cloud_api_key") or ""
         if cloud_url and cloud_api_key:

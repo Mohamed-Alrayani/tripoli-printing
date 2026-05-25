@@ -129,7 +129,8 @@ def process_queue():
                         timeout=30
                     )
                     if resp.status_code == 200:
-                        logging.info(f"Synced {action}: {invoice_number}")
+                        logging.info(f"Synced {action}: {invoice_number} (code {secure_code})")
+                        print(f"✅ Synced {action}: {invoice_number} (code {secure_code}) to cloud")
                         continue
                     else:
                         logging.warning(f"Sync {action} failed: {resp.status_code}")
@@ -141,3 +142,8 @@ def process_queue():
             remaining.append(item)
 
     _save(remaining)
+
+
+def pending_count():
+    """عدد العمليات المعلقة في قائمة الانتظار."""
+    return len(_load())
