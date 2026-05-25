@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import logging
 from flask import Flask, request, jsonify, abort
 import telebot
@@ -13,7 +14,44 @@ logging.basicConfig(level=logging.INFO)
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
+DATA_DIR = "invoices_data"
+INDEX_FILE = os.path.join(DATA_DIR, "index.json")
+os.makedirs(DATA_DIR, exist_ok=True)
+
 invoices = {}
+
+
+def _load_index():
+    if os.path.exists(INDEX_FILE):
+        try:
+            with open(INDEX_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for code, info in data.items():
+                    pdf_path = info.get("pdf_path", "")
+                    if os.path.exists(pdf_path):
+                        with open(pdf_path, "rb") as pf:
+                            info["pdf_bytes"] = pf.read()
+                        invoices[code] = info
+                logging.info(f"Loaded {len(invoices)} invoices from disk")
+        except Exception as e:
+            logging.error(f"Failed to load index: {e}")
+
+
+def _save_index():
+    try:
+        index = {}
+        for code, info in invoices.items():
+            index[code] = {
+                "invoice_number": info["invoice_number"],
+                "client_name": info["client_name"],
+                "total": info["total"],
+                "pdf_path": info.get("pdf_path", ""),
+                "pdf_filename": info["pdf_filename"],
+            }
+        with open(INDEX_FILE, "w", encoding="utf-8") as f:
+            json.dump(index, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.error(f"Failed to save index: {e}")
 
 
 @app.route("/", methods=["GET"])
@@ -40,15 +78,22 @@ def add_invoice():
         return jsonify({"error": "PDF file is required"}), 400
 
     pdf_bytes = pdf_file.read()
+    pdf_filename = pdf_file.filename or f"فاتورة_{invoice_number}.pdf"
+    pdf_path = os.path.join(DATA_DIR, f"{secure_code}_{invoice_number}.pdf")
+
+    with open(pdf_path, "wb") as f:
+        f.write(pdf_bytes)
 
     invoices[secure_code] = {
         "invoice_number": invoice_number,
         "client_name": client_name,
         "total": total,
         "pdf_bytes": pdf_bytes,
-        "pdf_filename": pdf_file.filename or f"فاتورة_{invoice_number}.pdf",
+        "pdf_filename": pdf_filename,
+        "pdf_path": pdf_path,
     }
 
+    _save_index()
     logging.info(f"Invoice {invoice_number} stored with code {secure_code}")
     return jsonify({"success": True, "message": "تم تخزين الفاتورة في السحابة"}), 200
 
@@ -76,6 +121,15 @@ def handle_code(message):
             "الرجاء التواصل مع الشركة للحصول على كود جديد.",
         )
         return
+
+    pdf_path = inv.get("pdf_path", "")
+    if os.path.exists(pdf_path):
+        try:
+            os.remove(pdf_path)
+        except Exception:
+            pass
+
+    _save_index()
 
     caption = (
         f"📄 فاتورة رقم: {inv['invoice_number']}\n"
@@ -123,7 +177,7 @@ def set_webhook():
         logging.error(f"Webhook setup failed: {e}")
 
 
-# تضبيط الـ webhook فوراً عند تشغيل السيرفر (حتى مع gunicorn)
+_load_index()
 set_webhook()
 
 if __name__ == "__main__":
